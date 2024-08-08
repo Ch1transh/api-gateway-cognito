@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to create a Cognito User Pool with custom settings.
+
+Parameters:
+  UserPoolName:
+    Type: String
+    Description: Name of the Cognito User Pool
+  ExternalId:
+    Type: String
+    Description: External ID for the Cognito User Pool
+  SnsCallerArn:
+    Type: String
+    Description: ARN of the SNS caller role
+  EmailSendingAccount:
+    Type: String
+    Description: Email sending account
+  UserPoolId:
+    Type: String
+    Description: User Pool ID
+Resources:
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Ref UserPoolName
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+        - phone_number
+      MfaConfiguration: 'ON'
+      SmsConfiguration:
+        ExternalId: "your-external-id"  # Replace with your actual ExternalId
+        SnsCallerArn: "arn:aws:iam::your-account-id:role/SNSCallerRole"  # Replace with your IAM role ARN
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: 'verified_email'
+            Priority: 1
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 30
+      Schema:
+        - Name: email
+          Required: true
+          Mutable: true
+          AttributeDataType: String
+        - Name: name
+          Required: true
+          Mutable: true
+          AttributeDataType: String
+        - Name: zone
+          Required: false
+          Mutable: true
+          AttributeDataType: String
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: test-user-pool-client
+      GenerateSecret: false
+      UserPoolId: !Ref CognitoUserPool
+      ExplicitAuthFlows:
+      - ALLOW_USER_PASSWORD_AUTH
+      - ALLOW_REFRESH_TOKEN_AUTH
+      - ALLOW_USER_SRP_AUTH
+
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: test-user-pool-domain-udcee
+      UserPoolId: !Ref CognitoUserPool

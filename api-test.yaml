@@ -1,0 +1,180 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Dummy Api Gateway'
+Resources:
+  MyLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+
+          data = {
+              "items": [
+                  {"id": 1, "name": "test", "price": 100},
+                  {"id": 2, "name": "test2", "price": 200},
+              ]
+          }
+
+          def lambda_handler(event, context):
+              http_method = event['httpMethod']
+              if http_method == 'GET':
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps(data)
+                  }
+              elif http_method == 'POST':
+                  body = json.loads(event["body"])
+                  data["items"].append(body)
+                  response = {
+                      'statusCode': 200,
+                      'body': json.dumps(data)
+                  }
+                  return response
+              elif http_method == 'PUT':
+                  body = json.loads(event["body"])
+                  for item in data["items"]:
+                      if item["id"] == body["id"]:
+                          item.update(body)
+                          break                 
+                  response = {
+                      'statusCode': 200,
+                      'body': json.dumps(data)
+                  }
+                  return response
+              elif http_method == 'DELETE':
+                  body = json.loads(event["body"])
+                  for item in data["items"]:
+                      if item["id"] == body["id"]:
+                          data["items"].remove(item)
+                          break                 
+                  response = {
+                      'statusCode': 200,
+                      'body': json.dumps(data)
+                  }
+                  return response
+              else:
+                  return {
+                      'statusCode': 400,
+                      'body': json.dumps({'message': 'Unsupported method'})
+                  }
+      Runtime: python3.12
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: "Allow"
+          Principal:
+            Service: 
+              - "lambda.amazonaws.com"
+          Action: 
+            - "sts:AssumeRole"
+      Policies:
+        - PolicyName: "root"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "logs:*"
+                  - "dynamodb:*"
+                  - "s3:*"
+                  - "sns:*"
+                  - "sqs:*"
+                  - "lambda:*"
+                Resource: "*"
+
+  ApiGatewayRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: MyApi
+
+  ApiGatewayResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGatewayRestApi.RootResourceId
+      PathPart: items
+      RestApiId: !Ref ApiGatewayRestApi
+
+  ApiGatewayMethodGet:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: GET
+      ResourceId: !Ref ApiGatewayResource
+      RestApiId: !Ref ApiGatewayRestApi
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${MyLambdaFunction.Arn}/invocations
+          - MyLambdaFunction: !GetAtt MyLambdaFunction.Arn
+
+  ApiGatewayMethodPost:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      ResourceId: !Ref ApiGatewayResource
+      RestApiId: !Ref ApiGatewayRestApi
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${MyLambdaFunction.Arn}/invocations
+          - MyLambdaFunction: !GetAtt MyLambdaFunction.Arn
+
+  ApiGatewayMethodPut:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: PUT
+      ResourceId: !Ref ApiGatewayResource
+      RestApiId: !Ref ApiGatewayRestApi
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${MyLambdaFunction.Arn}/invocations
+          - MyLambdaFunction: !GetAtt MyLambdaFunction.Arn
+
+  ApiGatewayMethodDelete:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: DELETE
+      ResourceId: !Ref ApiGatewayResource
+      RestApiId: !Ref ApiGatewayRestApi
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${MyLambdaFunction.Arn}/invocations
+          - MyLambdaFunction: !GetAtt MyLambdaFunction.Arn
+
+  LambdaApiGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt MyLambdaFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub
+        - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/*
+        - ApiGatewayRestApi: !Ref ApiGatewayRestApi
+
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      StageName: prod
+    DependsOn:
+      - ApiGatewayMethodGet
+      - ApiGatewayMethodPost
+      - ApiGatewayMethodPut
+      - ApiGatewayMethodDelete
+    
